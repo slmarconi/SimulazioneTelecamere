@@ -1,0 +1,15 @@
+# File temporanei
+*.log
+*.tmp
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Credenziali
+.env

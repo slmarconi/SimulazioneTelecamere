@@ -1,0 +1,49 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    ports:
+      - "8554:8554"   # RTSP
+      - "8888:8888"   # Web UI
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped
+
+  camera1:
+    image: jrottenberg/ffmpeg:latest
+    container_name: camera1
+    depends_on:
+      - mediamtx
+    command: >
+      -re -stream_loop -1 -i /video/cam1.mp4
+      -c:v libx264 -preset veryfast -tune zerolatency
+      -f rtsp rtsp://mediamtx:8554/camera1
+    volumes:
+      - ./video:/video:ro
+    restart: unless-stopped
+
+  camera2:
+    image: jrottenberg/ffmpeg:latest
+    container_name: camera2
+    depends_on:
+      - mediamtx
+    command: >
+      -re -stream_loop -1 -i /video/cam2.mp4
+      -c:v libx264 -preset veryfast -tune zerolatency
+      -f rtsp rtsp://mediamtx:8554/camera2
+    volumes:
+      - ./video:/video:ro
+    restart: unless-stopped
+
+  camera3:
+    image: jrottenberg/ffmpeg:latest
+    container_name: camera3
+    depends_on:
+      - mediamtx
+    command: >
+      -re -stream_loop -1 -i /video/cam3.mp4
+      -c:v libx264 -preset veryfast -tune zerolatency
+      -f rtsp rtsp://mediamtx:8554/camera3
+    volumes:
+      - ./video:/video:ro
+    restart: unless-stopped

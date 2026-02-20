@@ -1,0 +1,8 @@
+rtsp: yes
+hls: yes
+webrtc: yes
+
+paths:
+  all:
+    readUser: ""
+    readPass: ""
