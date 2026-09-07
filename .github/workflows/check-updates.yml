@@ -1,0 +1,111 @@
+name: Check Docker image updates
+
+on:
+  schedule:
+    # Check every day at 04:17 UTC.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docker-image-update-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull latest Docker images
+        run: |
+          docker pull bluenviron/mediamtx:latest
+          docker pull jrottenberg/ffmpeg:latest
+
+      - name: Detect image changes and bump minor version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATE_FILE=".github/docker-image-digests"
+          VERSION_FILE="VERSION"
+
+          current_mediamtx="$(docker image inspect bluenviron/mediamtx:latest --format '{{index .RepoDigests 0}}')"
+          current_ffmpeg="$(docker image inspect jrottenberg/ffmpeg:latest --format '{{index .RepoDigests 0}}')"
+
+          mkdir -p "$(dirname "$STATE_FILE")"
+
+          if [[ ! -f "$STATE_FILE" ]]; then
+            printf 'bluenviron/mediamtx:latest=%s\njrottenberg/ffmpeg:latest=%s\n' \
+              "$current_mediamtx" "$current_ffmpeg" > "$STATE_FILE"
+            echo "First run: recording current image digests without creating a release."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous_mediamtx="$(sed -n 's/^bluenviron\/mediamtx:latest=//p' "$STATE_FILE")"
+          previous_ffmpeg="$(sed -n 's/^jrottenberg\/ffmpeg:latest=//p' "$STATE_FILE")"
+
+          changed=false
+          [[ "$current_mediamtx" != "$previous_mediamtx" ]] && changed=true
+          [[ "$current_ffmpeg" != "$previous_ffmpeg" ]] && changed=true
+
+          printf 'bluenviron/mediamtx:latest=%s\njrottenberg/ffmpeg:latest=%s\n' \
+            "$current_mediamtx" "$current_ffmpeg" > "$STATE_FILE"
+
+          if [[ "$changed" != "true" ]]; then
+            echo "No Docker image update detected."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_version="$(tr -d '[:space:]' < "$VERSION_FILE")"
+          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Invalid VERSION: $current_version" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          new_minor=$((minor + 1))
+          new_version="${major}.${new_minor}.0"
+
+          printf '%s\n' "$new_version" > "$VERSION_FILE"
+          printf 'changed=true\nnew_version=%s\n' "$new_version" >> "$GITHUB_OUTPUT"
+
+          echo "Docker image update detected: $current_version -> $new_version"
+          echo "New MediaMTX digest: $current_mediamtx"
+          echo "New FFmpeg digest:    $current_ffmpeg"
+        id: version
+
+      - name: Commit version and digest state
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION .github/docker-image-digests
+          git commit -m "chore: release v${{ steps.version.outputs.new_version }}"
+          git push origin HEAD:main
+
+      - name: Create Git tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag "v${{ steps.version.outputs.new_version }}"
+          git push origin "v${{ steps.version.outputs.new_version }}"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.new_version }}" \
+            --title "v${{ steps.version.outputs.new_version }}" \
+            --generate-notes
