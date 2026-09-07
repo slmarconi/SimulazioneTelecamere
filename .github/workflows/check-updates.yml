@@ -29,6 +29,7 @@ jobs:
           docker pull jrottenberg/ffmpeg:latest
 
       - name: Detect image changes and bump minor version
+        id: version
         shell: bash
         run: |
           set -euo pipefail
@@ -41,16 +42,18 @@ jobs:
 
           mkdir -p "$(dirname "$STATE_FILE")"
 
-          if [[ ! -f "$STATE_FILE" ]]; then
+          previous_mediamtx="$(sed -n 's/^bluenviron\/mediamtx:latest=//p' "$STATE_FILE" 2>/dev/null || true)"
+          previous_ffmpeg="$(sed -n 's/^jrottenberg\/ffmpeg:latest=//p' "$STATE_FILE" 2>/dev/null || true)"
+
+          # The repository starts with a placeholder state. The first run records
+          # the real digests without creating a release.
+          if [[ "$previous_mediamtx" == "initial" || "$previous_ffmpeg" == "initial" || -z "$previous_mediamtx" || -z "$previous_ffmpeg" ]]; then
             printf 'bluenviron/mediamtx:latest=%s\njrottenberg/ffmpeg:latest=%s\n' \
               "$current_mediamtx" "$current_ffmpeg" > "$STATE_FILE"
-            echo "First run: recording current image digests without creating a release."
+            echo "Baseline recorded. No release created."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          previous_mediamtx="$(sed -n 's/^bluenviron\/mediamtx:latest=//p' "$STATE_FILE")"
-          previous_ffmpeg="$(sed -n 's/^jrottenberg\/ffmpeg:latest=//p' "$STATE_FILE")"
 
           changed=false
           [[ "$current_mediamtx" != "$previous_mediamtx" ]] && changed=true
@@ -82,16 +85,17 @@ jobs:
           echo "Docker image update detected: $current_version -> $new_version"
           echo "New MediaMTX digest: $current_mediamtx"
           echo "New FFmpeg digest:    $current_ffmpeg"
-        id: version
 
       - name: Commit version and digest state
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.changed == 'true' || steps.version.outputs.new_version == ''
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add VERSION .github/docker-image-digests
-          git commit -m "chore: release v${{ steps.version.outputs.new_version }}"
-          git push origin HEAD:main
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update Docker image state"
+            git push origin HEAD:main
+          fi
 
       - name: Create Git tag
         if: steps.version.outputs.changed == 'true'
