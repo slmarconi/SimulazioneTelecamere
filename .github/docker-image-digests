@@ -1,2 +1,2 @@
-bluenviron/mediamtx:latest=initial
-jrottenberg/ffmpeg:latest=initial
+bluenviron/mediamtx:latest=bluenviron/mediamtx@sha256:19fddade8d6110a3d718ac0045681fbeba344ae563a066205fe5929a87f7582f
+jrottenberg/ffmpeg:latest=jrottenberg/ffmpeg@sha256:7e8154ec4779d335054de5e173f1ef52032abaa12ac7416cc7f0c88f4973bd14
